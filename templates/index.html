@@ -226,7 +226,7 @@
             words.push({ body, element: el });
         }
 
-        async function fetchAndStart() {
+        async function fetchAndStart(retryCount = 0) {
             const statusDot = document.getElementById('statusDot');
             const statusText = document.getElementById('statusText');
             const msgEl = document.getElementById('result-message');
@@ -245,8 +245,15 @@
             statusText.innerHTML = 'Fetching Data<span class="loading-dot">.</span><span class="loading-dot">.</span><span class="loading-dot">.</span>';
 
             try {
-                // Sizin orijinal API bağlantınız
-                const response = await fetch('/api/count');
+                const response = await fetch('/api/count', {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
                 const data = await response.json();
 
                 if (data.success) {
@@ -254,26 +261,53 @@
                     statusDot.className = 'dot active';
                     statusText.innerText = 'Inbox Synced';
 
-                    // Görsel dökülme limiti (Tarayıcı çökmesin diye)
+                    // Visual drop limit (prevent browser crash)
                     const visualsToDrop = Math.min(actualCount, 150); 
                     
                     for(let i = 0; i < visualsToDrop; i++) {
                         setTimeout(addWord, i * 100);
                     }
 
-                    // Dökülme bitince tahmini aç
+                    // Show input after animations complete
                     setTimeout(() => {
                         inputArea.style.display = 'flex';
                     }, visualsToDrop * 100 + 1000);
 
                 } else {
+                    // Handle error from API
                     statusDot.className = 'dot error';
-                    statusText.innerText = 'Auth Error';
+                    
+                    if (data.error && data.error.includes('timeout')) {
+                        statusText.innerText = 'Timeout - Retrying...';
+                        
+                        // Auto-retry once after timeout
+                        if (retryCount < 1) {
+                            setTimeout(() => fetchAndStart(retryCount + 1), 2000);
+                        } else {
+                            statusText.innerText = 'Server Busy';
+                            msgEl.style.color = "#ff3b30";
+                            msgEl.innerText = "Server is busy. Please try again.";
+                            setTimeout(() => {
+                                document.getElementById('restartBtn').style.display = "block";
+                                inputArea.style.display = 'flex';
+                            }, 1000);
+                        }
+                    } else {
+                        statusText.innerText = data.error || 'Error';
+                    }
                 }
             } catch (error) {
                 statusDot.className = 'dot error';
-                statusText.innerText = 'Server Error';
+                statusText.innerText = 'Connection Error';
                 console.error(error);
+                
+                msgEl.style.color = "#ff3b30";
+                msgEl.innerText = "Could not connect to server.";
+                
+                setTimeout(() => {
+                    document.getElementById('restartBtn').style.display = "block";
+                    inputArea.style.display = 'flex';
+                }, 1000);
             }
         }
 
@@ -296,7 +330,7 @@
             document.getElementById('restartBtn').style.display = "block";
         };
 
-        document.getElementById('restartBtn').onclick = fetchAndStart;
+        document.getElementById('restartBtn').onclick = () => fetchAndStart(0);
 
         initPhysics();
         fetchAndStart();

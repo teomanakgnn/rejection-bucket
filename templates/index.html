@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Rejection Bucket</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+
+        body {
+            background-color: #ffffff;
+            color: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        h1 {
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: -1px;
+            font-size: 2rem;
+            margin-bottom: 5px;
+            text-align: center;
+        }
+
+        p.subtitle { color: #666; margin-bottom: 20px; font-size: 0.9rem; }
+
+        .counter {
+            font-size: 4rem;
+            font-weight: 900;
+            margin-bottom: 10px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        #scene-container {
+            position: relative;
+            width: 400px;
+            height: 450px;
+        }
+
+        .bucket-visual {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 360px;
+            height: 400px;
+            border-left: 6px solid #000;
+            border-right: 6px solid #000;
+            border-bottom: 6px solid #000;
+            border-radius: 0 0 24px 24px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .physics-word {
+            position: absolute;
+            color: #000;
+            font-family: 'Courier Prime', monospace;
+            font-size: 14px; 
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            white-space: nowrap;
+            background: transparent;
+            transform-origin: center center;
+            will-change: transform;
+        }
+
+        .status-badge {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            background: #f5f5f7;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            z-index: 100;
+        }
+        
+        .dot { width: 8px; height: 8px; background: #d1d1d6; border-radius: 50%; }
+        .dot.active { background: #34c759; box-shadow: 0 0 8px #34c759; }
+        .dot.error { background: #ff3b30; }
+
+        /* Mobile Responsive */
+        @media (max-width: 500px) {
+            #scene-container { transform: scale(0.8); transform-origin: bottom center; }
+            .counter { font-size: 3rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="status-badge">
+        <div class="dot" id="statusDot"></div>
+        <span id="statusText">Connecting to Inbox...</span>
+    </div>
+
+    <h1>The Rejection Bucket</h1>
+    <p class="subtitle">Total "unfortunately" emails received</p>
+    <div class="counter" id="scoreVal">0</div>
+
+    <div id="scene-container">
+        <div class="bucket-visual"></div>
+    </div>
+
+    <script>
+        const Engine = Matter.Engine,
+              Runner = Matter.Runner,
+              Bodies = Matter.Bodies,
+              Composite = Matter.Composite,
+              Events = Matter.Events;
+
+        let engine, runner, words = [];
+        let currentCount = 0;
+
+        function initPhysics() {
+            engine = Engine.create();
+            engine.gravity.y = 1.3;
+
+            const wallOpts = { isStatic: true };
+            const ground = Bodies.rectangle(200, 455, 360, 20, wallOpts);
+            const leftWall = Bodies.rectangle(15, 250, 20, 420, wallOpts);
+            const rightWall = Bodies.rectangle(385, 250, 20, 420, wallOpts);
+
+            Composite.add(engine.world, [ground, leftWall, rightWall]);
+
+            runner = Runner.create();
+            Runner.run(runner, engine);
+            Events.on(engine, 'afterUpdate', updateDomPositions);
+        }
+
+        function updateDomPositions() {
+            words.forEach(item => {
+                const x = item.body.position.x - (110 / 2);
+                const y = item.body.position.y - (20 / 2);
+                item.element.style.transform = `translate(${x}px, ${y}px) rotate(${item.body.angle}rad)`;
+            });
+        }
+
+        function addWord() {
+            const x = Math.random() * 200 + 100;
+            const y = -50;
+            
+            const body = Bodies.rectangle(x, y, 110, 20, {
+                restitution: 0.1,
+                friction: 0.6,
+                angle: (Math.random() * 0.4) - 0.2
+            });
+
+            const el = document.createElement('div');
+            el.className = 'physics-word';
+            el.innerText = 'unfortunately';
+            el.style.width = '110px';
+            el.style.height = '20px';
+
+            document.getElementById('scene-container').appendChild(el);
+            Composite.add(engine.world, body);
+            words.push({ body, element: el });
+        }
+
+        async function fetchCount() {
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+
+            try {
+                // Fetch from our own backend
+                const response = await fetch('/api/count');
+                const data = await response.json();
+
+                if (data.success) {
+                    statusDot.className = 'dot active';
+                    statusText.innerText = 'Connected';
+
+                    const serverCount = data.count;
+                    
+                    if (serverCount > currentCount) {
+                        const diff = serverCount - currentCount;
+                        // Limit visualization to prevent browser crash if count is huge
+                        const visualsToDrop = Math.min(diff, 100); 
+                        
+                        for(let i = 0; i < visualsToDrop; i++) {
+                            setTimeout(addWord, i * 150);
+                        }
+                        
+                        currentCount = serverCount;
+                        document.getElementById('scoreVal').innerText = currentCount;
+                    }
+                } else {
+                    statusDot.className = 'dot error';
+                    statusText.innerText = 'Auth Error';
+                    console.error(data.error);
+                }
+            } catch (error) {
+                statusDot.className = 'dot error';
+                statusText.innerText = 'Server Error';
+                console.error(error);
+            }
+        }
+
+        initPhysics();
+        fetchCount(); // Initial check
+        
+        // Check every 60 seconds (Scanning all emails takes resources)
+        setInterval(fetchCount, 60000); 
+    </script>
+</body>
+</html>

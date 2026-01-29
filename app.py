@@ -20,11 +20,17 @@ def get_rejection_count():
     if not EMAIL_USER or not EMAIL_PASS:
         return jsonify({"success": False, "error": "Credentials not set on server."})
 
+# app.py içindeki ilgili kısmı bul ve şununla değiştir:
+
     try:
         # Connect to Gmail
         with MailBox(IMAP_SERVER).login(EMAIL_USER, EMAIL_PASS) as mailbox:
-            # SEARCH: All emails containing "unfortunately" (No date filter = General/All Time)
-            # This scans the entire inbox history.
+            
+            # --- YENİ EKLENEN SATIR: Sadece Inbox değil, Tüm Postaları seç ---
+            mailbox.folder.set('[Gmail]/All Mail') 
+            # ------------------------------------------------------------------
+
+            # SEARCH: All emails containing "unfortunately"
             msgs = mailbox.fetch(AND(text='unfortunately'))
             count = sum(1 for _ in msgs)
             

@@ -59,7 +59,7 @@ def fetch_rejection_count_worker(result_queue):
             
             # Fetch emails with "unfortunately" - limit to 500 for performance
             msgs = mailbox.fetch(
-            AND(text='unfortunately', date_ge=datetime.date.today() - datetime.timedelta(days=365)), 
+            AND(text='unfortunately', date_gte=datetime.date.today() - datetime.timedelta(days=365)), 
             limit=500, 
             mark_seen=False
         )

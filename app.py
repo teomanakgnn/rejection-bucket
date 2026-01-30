@@ -2,6 +2,7 @@ import os
 from flask import Flask, render_template, jsonify
 from flask_cors import CORS
 from imap_tools import MailBox, AND
+import datetime
 import time
 from threading import Thread
 import queue
@@ -20,7 +21,8 @@ CACHE_DURATION = 120  # 2 minutes
 def fetch_rejection_count_worker(result_queue):
     """Worker function to fetch count with timeout protection"""
     try:
-        with MailBox(IMAP_SERVER).login(EMAIL_USER, EMAIL_PASS, timeout=20) as mailbox:
+       # Pass timeout to the MailBox constructor
+        with MailBox(IMAP_SERVER, timeout=20).login(EMAIL_USER, EMAIL_PASS) as mailbox:
             try:
                 available_folders = [f.name for f in mailbox.folder.list()]
                 print(f"Available folders: {available_folders}")
@@ -56,7 +58,11 @@ def fetch_rejection_count_worker(result_queue):
                 mailbox.folder.set('INBOX')
             
             # Fetch emails with "unfortunately" - limit to 500 for performance
-            msgs = list(mailbox.fetch(AND(text='unfortunately'), limit=500, mark_seen=False))
+            msgs = mailbox.fetch(
+            AND(text='unfortunately', date_ge=datetime.date.today() - datetime.timedelta(days=365)), 
+            limit=500, 
+            mark_seen=False
+        )
             count = len(msgs)
             
             result_queue.put({"success": True, "count": count})
@@ -121,7 +127,7 @@ def list_folders():
         return jsonify({"success": False, "error": "Credentials not set"})
     
     try:
-        with MailBox(IMAP_SERVER).login(EMAIL_USER, EMAIL_PASS, timeout=15) as mailbox:
+        with MailBox(IMAP_SERVER, timeout=15).login(EMAIL_USER, EMAIL_PASS) as mailbox:
             folders = [f.name for f in mailbox.folder.list()]
             return jsonify({"success": True, "folders": folders})
     except Exception as e:

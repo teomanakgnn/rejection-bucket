@@ -21,7 +21,6 @@ CACHE_DURATION = 120  # 2 minutes
 def fetch_rejection_count_worker(result_queue):
     """Worker function to fetch count with timeout protection"""
     try:
-       # Pass timeout to the MailBox constructor
         with MailBox(IMAP_SERVER, timeout=20).login(EMAIL_USER, EMAIL_PASS) as mailbox:
             try:
                 available_folders = [f.name for f in mailbox.folder.list()]
@@ -57,14 +56,18 @@ def fetch_rejection_count_worker(result_queue):
                 print(f"Folder error: {folder_error}, using INBOX")
                 mailbox.folder.set('INBOX')
             
-            # Fetch emails with "unfortunately" - limit to 500 for performance
+            # HIZLANDIRMA: Sadece header'ları fetch et (body yok)
+            # HIZLANDIRMA: bulk=True kullan - daha hızlı
             msgs = mailbox.fetch(
                 AND(text='unfortunately', date_gte=datetime.date.today() - datetime.timedelta(days=365)), 
                 limit=500, 
-                mark_seen=False
+                mark_seen=False,
+                bulk=True,  # Toplu işlem - çok daha hızlı
+                headers_only=True  # Sadece header'lar - body gerekmez
             )
-            # Convert generator to list to get count
-            count = len(list(msgs))
+            
+            # Sadece say - listeye çevirme
+            count = sum(1 for _ in msgs)
             
             result_queue.put({"success": True, "count": count})
             
